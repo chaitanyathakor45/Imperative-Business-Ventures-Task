@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Annotation Demo</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+      .container { padding: 12px; }
+      .row { display: flex; gap: 12px; }
+      .col { flex: 1; min-width: 320px; }
+      #pages { display: flex; flex-direction: column; gap: 8px; }
+      .page { position: relative; display: inline-block; border: 1px solid #ddd; }
+      .bbox { position: absolute; border: 2px dashed #ff3b30; background: rgba(255,59,48,0.15); }
+      .field-list { max-height: 60vh; overflow: auto; border: 1px solid #eee; padding: 8px; }
+      label { display: block; margin-top: 8px; }
+      button { margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>PDF Field Mapping & Annotation</h2>
+      <div>
+        <label>Process ID: <input id="process_id" type="number" value="49" /></label>
+        <label>Form ID: <input id="form_id" type="number" value="20" /></label>
+        <input id="pdf_file" type="file" accept="application/pdf" />
+        <button id="btn_upload">Upload PDF</button>
+        <button id="btn_fetch">Fetch Saved Annotations</button>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <div class="col">
+          <h3>PDF Pages</h3>
+          <div id="pages"></div>
+        </div>
+        <div class="col">
+          <h3>New Annotation</h3>
+          <label>Field ID <input id="field_id" type="number" value="125" /></label>
+          <label>Field Name <input id="field_name" type="text" value="Bar_Code" /></label>
+          <label>Field Header <input id="field_header" type="text" value="Enter barcode" /></label>
+          <label>Field Type <input id="field_type" type="text" value="CharField" /></label>
+          <label>Required <input id="required" type="checkbox" checked /></label>
+          <label>Max Length <input id="max_length" type="number" value="50" /></label>
+          <div class="field-list" id="saved_fields"></div>
+          <button id="btn_save">Save Selected Boxes</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const apiBase = '';
+      let uploaded = null;
+      let scaleByPage = {}; // page -> scale
+      let selections = []; // {page, bbox:[x1,y1,x2,y2], scale}
+
+      document.getElementById('btn_upload').onclick = async () => {
+        const fileInput = document.getElementById('pdf_file');
+        const processId = document.getElementById('process_id').value;
+        const formId = document.getElementById('form_id').value;
+        if (!fileInput.files[0]) { alert('Choose a PDF'); return; }
+        const fd = new FormData();
+        fd.append('file', fileInput.files[0]);
+        fd.append('process_id', processId);
+        fd.append('form_id', formId);
+        const res = await fetch(apiBase + '/api/upload-pdf', { method:'POST', body: fd });
+        const data = await res.json();
+        if (!data.ok) { alert('Upload failed'); return; }
+        uploaded = data;
+        renderPdfAsImages(data.file_path);
+      };
+
+      async function renderPdfAsImages(filePath) {
+        const pagesDiv = document.getElementById('pages');
+        pagesDiv.innerHTML = '';
+        // Minimal approach: use built-in browser PDF rendering as <embed> fallback for preview, plus image overlays via CSS size.
+        // For simplicity, we show a single image per page placeholder. In production, use pdf.js.
+
+        // Here, assume 1 page preview using <embed>; drawing will use a fixed canvas overlay area.
+        const container = document.createElement('div');
+        container.className = 'page';
+        const embed = document.createElement('embed');
+        embed.src = filePath;
+        embed.type = 'application/pdf';
+        embed.style.width = '600px';
+        embed.style.height = '800px';
+        container.style.width = '600px';
+        container.style.height = '800px';
+        container.appendChild(embed);
+        pagesDiv.appendChild(container);
+
+        scaleByPage[1] = 1.0;
+        enableDraw(container, 1);
+      }
+
+      function enableDraw(container, pageNum) {
+        let startX = 0, startY = 0, rect = null;
+        container.onmousedown = (e) => {
+          if (e.button !== 0) return;
+          const bounds = container.getBoundingClientRect();
+          startX = e.clientX - bounds.left; startY = e.clientY - bounds.top;
+          rect = document.createElement('div');
+          rect.className = 'bbox';
+          rect.style.left = startX + 'px';
+          rect.style.top = startY + 'px';
+          rect.style.width = '0px';
+          rect.style.height = '0px';
+          container.appendChild(rect);
+          container.onmousemove = (ev) => {
+            const x = ev.clientX - bounds.left; const y = ev.clientY - bounds.top;
+            const w = Math.max(0, x - startX); const h = Math.max(0, y - startY);
+            rect.style.width = w + 'px'; rect.style.height = h + 'px';
+          };
+        };
+        container.onmouseup = (e) => {
+          container.onmousemove = null;
+          if (!rect) return;
+          const x1 = parseInt(rect.style.left); const y1 = parseInt(rect.style.top);
+          const x2 = x1 + parseInt(rect.style.width); const y2 = y1 + parseInt(rect.style.height);
+          selections.push({ page: pageNum, bbox: [x1, y1, x2, y2], scale: scaleByPage[pageNum] || 1 });
+          rect = null;
+        };
+      }
+
+      document.getElementById('btn_save').onclick = async () => {
+        if (!uploaded) { alert('Upload first'); return; }
+        if (!selections.length) { alert('Draw at least one box'); return; }
+        const processId = Number(document.getElementById('process_id').value);
+        const formId = Number(document.getElementById('form_id').value);
+        const fieldId = Number(document.getElementById('field_id').value);
+        const fieldName = document.getElementById('field_name').value;
+        const fieldHeader = document.getElementById('field_header').value;
+        const fieldType = document.getElementById('field_type').value;
+        const required = document.getElementById('required').checked;
+        const maxLength = Number(document.getElementById('max_length').value);
+
+        const payload = selections.map(sel => ({
+          process: processId,
+          form_id: formId,
+          field_id: fieldId,
+          field_name: fieldName,
+          field_header: fieldHeader,
+          bbox: sel.bbox,
+          page: sel.page,
+          scale: sel.scale,
+          field_type: fieldType,
+          metadata: { required, max_length: maxLength }
+        }));
+
+        const res = await fetch(apiBase + '/api/pdf-annotation-mappings/bulk/', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data.ok) { alert('Save failed'); return; }
+        alert('Saved ' + data.inserted_count + ' annotations');
+        selections = [];
+      };
+
+      document.getElementById('btn_fetch').onclick = async () => {
+        const processId = Number(document.getElementById('process_id').value);
+        const formId = Number(document.getElementById('form_id').value);
+        const res = await fetch(apiBase + '/app_admin/api/fetch-create-table/', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ process_id: processId, form_id: formId })
+        });
+        const items = await res.json();
+        const list = document.getElementById('saved_fields');
+        list.innerHTML = '';
+        items.forEach(it => {
+          const div = document.createElement('div');
+          div.textContent = `${it.field_name} (page ${it.annotation.page})`;
+          div.style.cursor = 'pointer';
+          div.onclick = () => highlightBox(it.annotation.page, it.annotation.bbox);
+          list.appendChild(div);
+        });
+      };
+
+      function highlightBox(page, bboxObj) {
+        const pagesDiv = document.getElementById('pages');
+        const pageDiv = pagesDiv.querySelector('.page');
+        if (!pageDiv) return;
+        const existing = pageDiv.querySelectorAll('.bbox');
+        existing.forEach(e => e.remove());
+
+        // bboxObj: {x1,x2,y1,y2}
+        const rect = document.createElement('div');
+        rect.className = 'bbox';
+        const x1 = bboxObj.x1; const y1 = bboxObj.y1; const x2 = bboxObj.x2; const y2 = bboxObj.y2;
+        rect.style.left = x1 + 'px';
+        rect.style.top = y1 + 'px';
+        rect.style.width = (x2 - x1) + 'px';
+        rect.style.height = (y2 - y1) + 'px';
+        pageDiv.appendChild(rect);
+        pageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    </script>
+  </body>
+  </html>
+
+
+

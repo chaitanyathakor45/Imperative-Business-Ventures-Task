@@ -1,0 +1,403 @@
+/* ===== Global ===== */
+body {
+    font-family: "Segoe UI", Roboto, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #f4f6f9;
+    color: #2d3748;
+    line-height: 1.5;
+  }
+  
+  .container {
+    padding: 20px;
+    max-width: 1300px;
+    margin: auto;
+  }
+  
+  /* ===== Headings ===== */
+  h2 {
+    font-size: 24px;
+    color: #1e293b;
+    margin-bottom: 16px;
+  }
+  
+  h3 {
+    font-size: 18px;
+    color: #334155;
+    margin-bottom: 12px;
+  }
+  
+  h4 {
+    font-size: 15px;
+    color: #475569;
+    margin-top: 16px;
+    margin-bottom: 6px;
+  }
+  
+  /* ===== Panels ===== */
+  .panel {
+    background: #fff;
+    border-radius: 10px;
+    padding: 16px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+  }
+  
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-start;
+    margin-top: 20px;
+  }
+  
+  .col {
+    flex: 1;
+    min-width: 360px;
+  }
+  
+  /* ===== Buttons ===== */
+  button {
+    margin-top: 8px;
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  button.primary {
+    background: #2563eb;
+    color: #fff;
+  }
+  
+  button.primary:hover {
+    background: #1d4ed8;
+  }
+  
+  button:hover {
+    background: #f1f5f9;
+  }
+  
+  button:active {
+    transform: scale(0.96);
+  }
+  
+  /* ===== Inputs & Selects ===== */
+  input[type="text"],
+  input[type="number"],
+  select {
+    width: 100%;
+    padding: 8px 10px;
+    margin-top: 4px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 14px;
+    background: #fff;
+    transition: border 0.2s ease, box-shadow 0.2s ease;
+  }
+  
+  input:focus,
+  select:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  }
+  
+  label {
+    display: block;
+    margin-top: 10px;
+    font-weight: 500;
+    font-size: 14px;
+    color: #374151;
+  }
+  
+  /* ===== PDF Pages ===== */
+  #pages {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .page {
+    position: relative;
+    display: inline-block;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    background: #fff;
+  }
+  
+  .page embed {
+    display: block;
+    border-radius: 8px;
+  }
+  
+  /* ===== Drawing Overlay ===== */
+  .draw-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    cursor: crosshair;
+  }
+  
+  .bbox {
+    position: absolute;
+    border: 2px solid rgba(255, 59, 48, 0.9);
+    background: rgba(255, 59, 48, 0.15);
+    border-radius: 4px;
+    transition: background 0.2s ease, border 0.2s ease;
+  }
+  
+  .bbox:hover {
+    background: rgba(255, 59, 48, 0.25);
+    border: 2px solid rgba(220, 38, 38, 0.9);
+  }
+  
+  /* ===== Field List ===== */
+  .field-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid #e5e7eb;
+    padding: 10px;
+    border-radius: 6px;
+    background: #f9fafb;
+    margin-top: 8px;
+  }
+  
+  .field-list div {
+    padding: 6px 8px;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+    font-size: 14px;
+  }
+  
+  .field-list div:hover {
+    background: #e0f2fe;
+    cursor: pointer;
+  }
+  
+/* ===== Status Text ===== */
+#status {
+  font-size: 14px;
+  margin-left: 12px;
+  color: #2563eb;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+#status.error {
+  color: #dc2626;
+  animation: shake 0.5s ease-in-out;
+}
+
+#status.success {
+  color: #059669;
+  animation: pulse 0.6s ease-in-out;
+}
+
+/* ===== Animations ===== */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(-20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* ===== Interactive Elements ===== */
+.panel {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.col {
+  animation: slideIn 0.6s ease-out;
+}
+
+.col:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+/* ===== Enhanced Buttons ===== */
+button {
+  position: relative;
+  overflow: hidden;
+}
+
+button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s ease, height 0.3s ease;
+}
+
+button:active::before {
+  width: 300px;
+  height: 300px;
+}
+
+/* ===== File Upload Enhancement ===== */
+input[type="file"] {
+  padding: 8px;
+  border: 2px dashed #cbd5e1;
+  background: #f8fafc;
+  transition: all 0.3s ease;
+}
+
+input[type="file"]:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+/* ===== PDF Container Enhancements ===== */
+#pages {
+  min-height: 200px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border-radius: 8px;
+  padding: 16px;
+  border: 2px dashed #cbd5e1;
+  transition: all 0.3s ease;
+}
+
+#pages:not(:empty) {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* ===== Selection List Enhancements ===== */
+.field-list div {
+  position: relative;
+  margin-bottom: 4px;
+  border-left: 3px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.field-list div:hover {
+  border-left-color: #2563eb;
+  transform: translateX(4px);
+}
+
+.field-list div:last-child {
+  margin-bottom: 0;
+}
+
+/* ===== Drawing Controls ===== */
+#toggle_draw, #clear_boxes {
+  margin-right: 8px;
+  margin-bottom: 8px;
+}
+
+#toggle_draw[data-on="0"] {
+  background: #6b7280;
+  color: #fff;
+}
+
+#toggle_draw[data-on="0"]:hover {
+  background: #4b5563;
+}
+
+/* ===== Loading States ===== */
+.loading {
+  position: relative;
+  pointer-events: none;
+}
+
+.loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #2563eb;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ===== Responsive Design ===== */
+@media (max-width: 768px) {
+  .row {
+    flex-direction: column;
+  }
+  
+  .col {
+    min-width: 100%;
+  }
+  
+  .container {
+    padding: 12px;
+  }
+  
+  .panel {
+    padding: 12px;
+  }
+}
+
+/* ===== Enhanced Bbox Styling ===== */
+.bbox {
+  animation: bboxAppear 0.3s ease-out;
+  box-shadow: 0 0 0 1px rgba(255, 59, 48, 0.3);
+}
+
+@keyframes bboxAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ===== Tooltip Styles ===== */
+[title] {
+  position: relative;
+}
+
+[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+  

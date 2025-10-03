@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Annotation Demo</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.3/angular.min.js"></script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body ng-app="pdfAnnotApp" ng-controller="MainCtrl as vm">
+    <div class="container">
+      <h2>PDF Field Mapping & Annotation</h2>
+      <div class="panel">
+        <label>Process ID: <input id="process_id" type="number" ng-model="vm.processId" /></label>
+        <label>Form ID: <input id="form_id" type="number" ng-model="vm.formId" /></label>
+        <input id="pdf_file" type="file" accept="application/pdf" />
+        <button class="primary" id="btn_upload" title="Upload a PDF file to start annotating">Upload PDF</button>
+        <button id="btn_fetch" title="Retrieve previously saved annotations">Fetch Saved Annotations</button>
+        <span id="status" style="margin-left:8px;color:#555"></span>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <div class="col panel">
+          <h3>PDF Pages</h3>
+          <div style="margin-bottom:8px;">
+            <button class="primary" id="toggle_draw" data-on="1" title="Toggle drawing mode on/off">Drawing: ON</button>
+            <button id="clear_boxes" title="Remove all currently drawn boxes">Clear Boxes</button>
+          </div>
+          <div id="pages"></div>
+        </div>
+        <div class="col panel">
+          <h3>New Annotation</h3>
+          <label>Field ID <input id="field_id" type="number" ng-model="vm.field.field_id" /></label>
+          <label>Field Name <input id="field_name" type="text" ng-model="vm.field.field_name" /></label>
+          <label>Field Header <input id="field_header" type="text" ng-model="vm.field.field_header" /></label>
+          <label>Field Type
+            <select id="field_type" ng-model="vm.field.field_type">
+              <option>CharField</option>
+              <option>DateField</option>
+              <option>IntegerField</option>
+            </select>
+          </label>
+          <label>Required <input id="required" type="checkbox" ng-model="vm.field.required" /></label>
+          <label>Max Length <input id="max_length" type="number" ng-model="vm.field.max_length" /></label>
+          <div class="field-list" id="saved_fields">
+            <div ng-repeat="it in vm.saved" ng-click="vm.highlight(it)" style="cursor:pointer; padding:4px 2px;">
+              {{it.field_name}} (page {{it.annotation.page}})
+            </div>
+          </div>
+          <h4 style="margin-top:12px;">Current Selections</h4>
+          <div class="field-list" id="current_selections">
+            <div ng-repeat="sel in vm.selections track by $index" style="display:flex;justify-content:space-between;gap:8px;">
+              <span>#{{$index+1}} page {{sel.page}} [{{sel.bbox.join(', ')}}]</span>
+              <button ng-click="vm.removeSelection($index)">Delete</button>
+            </div>
+          </div>
+          <button class="primary" id="btn_save" title="Save all drawn boxes with current field settings">Save Selected Boxes</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const apiBase = '';
+      let uploaded = null;
+      let scaleByPage = {}; // page -> scale
+      let selections = []; // {page, bbox:[x1,y1,x2,y2], scale}
+
+      angular.module('pdfAnnotApp', [])
+        .controller('MainCtrl', ['$scope', function($scope) {
+          const vm = this;
+          vm.processId = 49;
+          vm.formId = 20;
+          vm.field = { field_id: 125, field_name: 'Bar_Code', field_header: 'Enter barcode', field_type: 'CharField', required: true, max_length: 50 };
+          vm.selections = selections;
+          vm.saved = [];
+          vm.removeSelection = (idx) => {
+            selections.splice(idx,1);
+            renderCurrentSelections();
+            $scope.$applyAsync();
+          };
+          vm.highlight = (it) => highlightBox(it.annotation.page, it.annotation.bbox);
+        }]);
+
+      const statusEl = document.getElementById('status');
+      function setStatus(msg, type='info') {
+        statusEl.textContent = msg || '';
+        statusEl.className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+        if (msg) {
+          setTimeout(() => {
+            statusEl.textContent = '';
+            statusEl.className = '';
+          }, type === 'error' ? 5000 : 3000);
+        }
+      }
+
+      document.getElementById('btn_upload').onclick = async () => {
+        const fileInput = document.getElementById('pdf_file');
+        const processId = document.getElementById('process_id').value;
+        const formId = document.getElementById('form_id').value;
+        if (!fileInput.files[0]) { 
+          setStatus('Please choose a PDF file first', 'error');
+          return; 
+        }
+        
+        const btn = document.getElementById('btn_upload');
+        btn.classList.add('loading');
+        setStatus('Uploading PDF...');
+        
+        try {
+          const fd = new FormData();
+          fd.append('file', fileInput.files[0]);
+          fd.append('process_id', processId);
+          fd.append('form_id', formId);
+          const res = await fetch(apiBase + '/api/upload-pdf', { method:'POST', body: fd });
+          const data = await res.json();
+          
+          if (!data.ok) { 
+            setStatus('Upload failed: ' + (data.error || 'Unknown error'), 'error');
+            return; 
+          }
+          
+          uploaded = data;
+          renderPdfAsImages(data.file_path);
+          setStatus('PDF uploaded successfully!', 'success');
+        } catch (err) {
+          setStatus('Upload failed: ' + err.message, 'error');
+        } finally {
+          btn.classList.remove('loading');
+        }
+      };
+
+      async function renderPdfAsImages(filePath) {
+        const pagesDiv = document.getElementById('pages');
+        pagesDiv.innerHTML = '';
+        const container = document.createElement('div');
+        container.className = 'page';
+        const embed = document.createElement('embed');
+        embed.src = filePath;
+        embed.type = 'application/pdf';
+        embed.style.width = '600px';
+        embed.style.height = '800px';
+        container.style.width = '600px';
+        container.style.height = '800px';
+        container.appendChild(embed);
+
+        // Transparent layer for drawing boxes above the PDF
+        const overlay = document.createElement('div');
+        overlay.className = 'draw-layer';
+        overlay.style.width = '600px';
+        overlay.style.height = '800px';
+        container.appendChild(overlay);
+        pagesDiv.appendChild(container);
+
+        scaleByPage[1] = 1.0;
+        enableDraw(overlay, 1);
+      }
+
+      function enableDraw(targetLayer, pageNum) {
+        let startX = 0, startY = 0, rect = null;
+        let drawingEnabled = true;
+
+        document.getElementById('toggle_draw').onclick = () => {
+          drawingEnabled = !drawingEnabled;
+          const btn = document.getElementById('toggle_draw');
+          btn.textContent = `Drawing: ${drawingEnabled ? 'ON' : 'OFF'}`;
+          btn.setAttribute('data-on', drawingEnabled ? '1' : '0');
+          targetLayer.style.pointerEvents = drawingEnabled ? 'auto' : 'none';
+        };
+
+        document.getElementById('clear_boxes').onclick = () => {
+          selections = [];
+          const existing = targetLayer.querySelectorAll('.bbox');
+          existing.forEach(e => e.remove());
+          renderCurrentSelections();
+        };
+        targetLayer.onmousedown = (e) => {
+          if (document.getElementById('toggle_draw').getAttribute('data-on') !== '1') return;
+          if (e.button !== 0) return;
+          const bounds = targetLayer.getBoundingClientRect();
+          startX = e.clientX - bounds.left; startY = e.clientY - bounds.top;
+          rect = document.createElement('div');
+          rect.className = 'bbox';
+          rect.style.left = startX + 'px';
+          rect.style.top = startY + 'px';
+          rect.style.width = '0px';
+          rect.style.height = '0px';
+          targetLayer.appendChild(rect);
+          targetLayer.onmousemove = (ev) => {
+            const x = ev.clientX - bounds.left; const y = ev.clientY - bounds.top;
+            const w = Math.max(0, x - startX); const h = Math.max(0, y - startY);
+            rect.style.width = w + 'px'; rect.style.height = h + 'px';
+          };
+        };
+        targetLayer.onmouseup = (e) => {
+          targetLayer.onmousemove = null;
+          if (!rect) return;
+          const x1 = parseInt(rect.style.left); const y1 = parseInt(rect.style.top);
+          const x2 = x1 + parseInt(rect.style.width); const y2 = y1 + parseInt(rect.style.height);
+          selections.push({ page: pageNum, bbox: [x1, y1, x2, y2], scale: scaleByPage[pageNum] || 1 });
+          renderCurrentSelections();
+          rect = null;
+        };
+      }
+
+      document.getElementById('btn_save').onclick = async () => {
+        if (!uploaded) { alert('Upload first'); return; }
+        if (!selections.length) { alert('Draw at least one box'); return; }
+        const processId = Number(document.getElementById('process_id').value);
+        const formId = Number(document.getElementById('form_id').value);
+        const fieldId = Number(document.getElementById('field_id').value);
+        const fieldName = document.getElementById('field_name').value;
+        const fieldHeader = document.getElementById('field_header').value;
+        const fieldType = document.getElementById('field_type').value;
+        const required = document.getElementById('required').checked;
+        const maxLength = Number(document.getElementById('max_length').value);
+
+        const payload = selections.map(sel => ({
+          process: processId,
+          form_id: formId,
+          field_id: fieldId,
+          field_name: fieldName,
+          field_header: fieldHeader,
+          bbox: sel.bbox,
+          page: sel.page,
+          scale: sel.scale,
+          field_type: fieldType,
+          metadata: { required, max_length: maxLength }
+        }));
+
+        const btn = document.getElementById('btn_save');
+        btn.classList.add('loading');
+        setStatus('Saving annotations...');
+        
+        try {
+          const res = await fetch(apiBase + '/api/pdf-annotation-mappings/bulk/', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          
+          if (!data.ok) { 
+            setStatus('Save failed: ' + (data.error || 'Unknown error'), 'error');
+            return; 
+          }
+          
+          setStatus(`Successfully saved ${data.inserted_count} annotation(s)!`, 'success');
+          selections = [];
+          renderCurrentSelections();
+          
+          // Clear all drawn boxes
+          const pagesDiv = document.getElementById('pages');
+          const pageDiv = pagesDiv.querySelector('.page');
+          const layer = pageDiv?.querySelector('.draw-layer') || pageDiv;
+          const boxes = layer?.querySelectorAll('.bbox') || [];
+          boxes.forEach(box => box.remove());
+        } catch (err) {
+          setStatus('Save failed: ' + err.message, 'error');
+        } finally {
+          btn.classList.remove('loading');
+        }
+      };
+
+      document.getElementById('btn_fetch').onclick = async () => {
+        const processId = Number(document.getElementById('process_id').value);
+        const formId = Number(document.getElementById('form_id').value);
+        
+        const btn = document.getElementById('btn_fetch');
+        btn.classList.add('loading');
+        setStatus('Fetching saved annotations...');
+        
+        try {
+          const res = await fetch(apiBase + '/app_admin/api/fetch-create-table/', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ process_id: processId, form_id: formId })
+          });
+          const items = await res.json();
+          
+          const scope = angular.element(document.body).scope();
+          scope.vm.saved = items;
+          scope.$applyAsync();
+          
+          setStatus(`Found ${items.length} saved annotation(s)`, 'success');
+        } catch (err) {
+          setStatus('Fetch failed: ' + err.message, 'error');
+        } finally {
+          btn.classList.remove('loading');
+        }
+      };
+
+      function highlightBox(page, bboxObj) {
+        const pagesDiv = document.getElementById('pages');
+        const pageDiv = pagesDiv.querySelector('.page');
+        if (!pageDiv) return;
+        const layer = pageDiv.querySelector('.draw-layer') || pageDiv;
+        const existing = layer.querySelectorAll('.bbox');
+        existing.forEach(e => e.remove());
+
+        const rect = document.createElement('div');
+        rect.className = 'bbox';
+        const x1 = bboxObj.x1; const y1 = bboxObj.y1; const x2 = bboxObj.x2; const y2 = bboxObj.y2;
+        rect.style.left = x1 + 'px';
+        rect.style.top = y1 + 'px';
+        rect.style.width = (x2 - x1) + 'px';
+        rect.style.height = (y2 - y1) + 'px';
+        layer.appendChild(rect);
+        pageDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      function renderCurrentSelections() {
+        const scope = angular.element(document.body).scope();
+        scope.vm.selections = selections.slice();
+        scope.$applyAsync();
+      }
+    </script>
+  </body>
+  </html>
+
+
